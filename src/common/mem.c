@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "common.h"
+#include "common/mem.h"
 #include "common/list.h"
 
 // NOTE: The functions below may be violating the strict-aliasing rule.

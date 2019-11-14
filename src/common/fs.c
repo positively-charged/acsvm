@@ -3,6 +3,7 @@
 #include <errno.h>
 
 #include "common.h"
+#include "mem.h"
 #include "str.h"
 #include "fs.h"
 

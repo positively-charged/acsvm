@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "common/mem.h"
 #include "common/str.h"
 
 static void adjust_buffer( struct str* string, int length );

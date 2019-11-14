@@ -4,6 +4,7 @@
 #include <setjmp.h>
 
 #include "common.h"
+#include "common/mem.h"
 #include "common/str.h"
 #include "common/list.h"
 #include "vm.h"

@@ -11,14 +11,6 @@
 #   define OS_WINDOWS 0
 #endif
 
-void mem_init( void );
-void* mem_alloc( size_t );
-void* mem_realloc( void*, size_t );
-void* mem_slot_alloc( size_t );
-void mem_slot_free( void* block, size_t size );
-void mem_free( void* );
-void mem_free_all( void );
-
 #define ARRAY_SIZE( a ) ( sizeof( a ) / sizeof( a[ 0 ] ) )
 #define STATIC_ASSERT( ... ) \
   STATIC_ASSERT_REAL( __VA_ARGS__,, )

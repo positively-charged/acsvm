@@ -1,4 +1,5 @@
 #include "common.h"
+#include "mem.h"
 #include "list.h"
 
 void list_init( struct list* list ) {
