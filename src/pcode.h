@@ -388,4 +388,8 @@ enum {
    PCD_TOTAL
 };
 
+enum line_special {
+   LSPEC_ACSEXECUTE = 80,
+};
+
 #endif

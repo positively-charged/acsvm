@@ -16,9 +16,15 @@ static void run_delayed_script( struct vm* machine );
 static struct script* deq_script( struct vm* machine );
 static void enq_script( struct vm* machine, struct script* script );
 static struct script* get_active_script( struct vm* machine, int number );
+static void add_suspended_script( struct vm* vm, struct script* script );
+static struct script* remove_suspended_script( struct vm* vm,
+   i32 script_number );
 static void run_script( struct vm* vm, struct script* script );
 static void add_waiting_script( struct script* script,
    struct script* waiting_script );
+static void execute_line_special( struct vm* vm, i32 special, i32 arg1,
+   i32 arg2 );
+static void execute_acs_execute( struct vm* vm, i32 map, i32 script_number );
 
 void vm_run( const char* data, size_t size ) {
    struct vm vm;
@@ -47,6 +53,7 @@ void init_vm( struct vm* vm ) {
    vm->object = NULL;
    vm->script_head = NULL;
    list_init( &vm->scripts );
+   list_init( &vm->suspended_scripts );
    list_init( &vm->strings );
    vm->arrays = NULL;
    str_init( &vm->msg );
@@ -79,6 +86,7 @@ void run( struct vm* machine  ) {
 
 void run_delayed_script( struct vm* machine ) {
    struct script* script = deq_script( machine );
+   // Wait for the earliest script to run.
    if ( script->delay_amount > 0 ) {
       int delay_amount = script->delay_amount;
       usleep( delay_amount * 1000 );
@@ -89,8 +97,11 @@ void run_delayed_script( struct vm* machine ) {
       }
    }
    run_script( machine, script );
-   if ( script->state != SCRIPTSTATE_WAITING ) {
-      if ( script->state == SCRIPTSTATE_TERMINATED ) {
+   switch ( script->state ) {
+   case SCRIPTSTATE_WAITING:
+      break;
+   case SCRIPTSTATE_TERMINATED:
+      {
          //printf( "script %d terminated\n", script->number );
          struct script* waiting_script = script->waiting;
          while ( waiting_script ) {
@@ -99,9 +110,19 @@ void run_delayed_script( struct vm* machine ) {
          }
          // free_script( machine, script );
       }
-      else {
-         enq_script( machine, script );
-      }
+      break;
+   case SCRIPTSTATE_SUSPENDED:
+      add_suspended_script( machine, script );
+      break;
+   case SCRIPTSTATE_DELAYED:
+      enq_script( machine, script );
+      break;
+   case SCRIPTSTATE_RUNNING:
+      // A script should not still be running. This means the maximum tic limit
+      // has been reached by the script. Terminate it.
+      break;
+   default:
+      UNREACHABLE();
    }
 }
 
@@ -155,6 +176,18 @@ struct script* get_active_script( struct vm* machine, int number ) {
    return NULL;
 }
 
+static void add_suspended_script( struct vm* vm, struct script* script ) {
+   list_append( &vm->suspended_scripts, script );
+}
+
+static struct script* remove_suspended_script( struct vm* vm,
+   i32 script_number ) {
+   //list_iter_t i;
+   
+   
+   return NULL;
+}
+
 void run_script( struct vm* vm, struct script* script ) {
    int stack_buffer[ 1000 ];
    int* stack = stack_buffer;
@@ -180,8 +213,14 @@ void run_script( struct vm* vm, struct script* script ) {
    }
    // Execute instruction.
    switch ( opc ) {
+   case PCD_NOP:
+      // Do nothing.
+      break;
    case PCD_TERMINATE:
       script->state = SCRIPTSTATE_TERMINATED;
+      return;
+   case PCD_SUSPEND:
+      script->state = SCRIPTSTATE_SUSPENDED;
       return;
    case PCD_PUSHNUMBER:
       memcpy( stack, data, sizeof( *stack ) );
@@ -582,7 +621,10 @@ void run_script( struct vm* vm, struct script* script ) {
       ++data;
       break;
    }
-   case PCD_SUSPEND:
+   case PCD_LSPEC1DIRECTB:
+      execute_line_special( vm, data[ 0 ], data[ 1 ], 0 );
+      data += sizeof( data[ 0 ] ) * 2; // Increment past the two arguments.
+      break;
    case PCD_LSPEC1:
    case PCD_LSPEC2:
    case PCD_LSPEC3:
@@ -704,6 +746,25 @@ void add_waiting_script( struct script* script,
       script->waiting = waiting_script;
    }
    script->waiting_tail = waiting_script;
+}
+
+static void execute_line_special( struct vm* vm, i32 special, i32 arg1,
+   i32 arg2 ) {
+   switch ( special ) {
+   case LSPEC_ACSEXECUTE:
+      execute_acs_execute( vm, arg1, arg2 );
+      break;
+   default:
+      UNREACHABLE();
+   }
+}
+
+static void execute_acs_execute( struct vm* vm, i32 map, i32 script_number ) {
+   // Resume a suspended script.
+   struct script* script = remove_suspended_script( vm, script_number );
+   if ( script != NULL ) {
+      
+   }
 }
 
 void v_diag( struct vm* machine, int flags, ... ) {
