@@ -2,7 +2,7 @@
 #include <string.h>
 #include <errno.h>
 
-#include "common.h"
+#include "misc.h"
 #include "mem.h"
 #include "str.h"
 #include "fs.h"

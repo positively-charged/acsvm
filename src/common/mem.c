@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "common.h"
+#include "common/misc.h"
 #include "common/mem.h"
 #include "common/list.h"
 

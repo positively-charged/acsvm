@@ -6,7 +6,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "common.h"
+#include "common/misc.h"
 #include "common/mem.h"
 #include "common/str.h"
 #include "common/list.h"
