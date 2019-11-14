@@ -45,21 +45,6 @@ typedef unsigned long long u64;
 typedef size_t usize;
 typedef ssize_t isize;
 
-struct str {
-   char* value;
-   int length;
-   int buffer_length;
-};
-
-void str_init( struct str* );
-void str_deinit( struct str* );
-void str_copy( struct str*, const char* value, int length );
-void str_grow( struct str*, int length );
-void str_append( struct str*, const char* cstr );
-void str_append_sub( struct str*, const char* cstr, int length );
-void str_append_number( struct str*, int number );
-void str_clear( struct str* );
-
 struct list_link {
    struct list_link* next;
    void* data;
@@ -150,6 +135,8 @@ struct file_contents {
 struct fs_result {
    int err;
 };
+
+struct str;
 
 bool c_read_fileid( struct fileid*, const char* path );
 bool c_same_fileid( struct fileid*, struct fileid* );

@@ -4,6 +4,7 @@
 #include <setjmp.h>
 
 #include "common.h"
+#include "common/str.h"
 #include "vm.h"
 
 static void init_options( struct options* options );
