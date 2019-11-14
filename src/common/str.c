@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include "common/misc.h"
 #include "common/mem.h"

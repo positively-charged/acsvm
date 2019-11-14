@@ -4,6 +4,7 @@
 
 #include <string.h>
 #include <setjmp.h>
+#include <stdarg.h>
 #include <ctype.h>
 
 #include "common/misc.h"
