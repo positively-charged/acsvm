@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "common/str.h"
+#include "common/list.h"
 #include "vm.h"
 
 struct chunk {

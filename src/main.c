@@ -5,6 +5,7 @@
 
 #include "common.h"
 #include "common/str.h"
+#include "common/list.h"
 #include "vm.h"
 
 static void init_options( struct options* options );
