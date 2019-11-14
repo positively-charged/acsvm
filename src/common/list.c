@@ -159,6 +159,39 @@ void* list_shift( struct list* list ) {
    }
 }
 
+/**
+ * Removes a node from the list at the position specified by an iterator.
+ */
+void* list_remove( struct list* list, struct list_iter* iter ) {
+   // Only remove a node if the iterator is at a valid node.
+   if ( iter->link ) {
+      struct list_link* link = iter->link;
+      // Remove node at the middle or end of the list.
+      if ( iter->prev ) {
+         iter->prev->next = link->next;
+         iter->link = iter->prev->next;
+         if ( ! iter->link ) {
+            list->tail = iter->prev;
+         }
+      }
+      // Remove node at the start of the list.
+      else {
+         list->head = link->next;
+         iter->link = list->head;
+         if ( ! list->head ) {
+            list->tail = NULL;
+         }
+      }
+      void* data = link->data;
+      mem_slot_free( link, sizeof( *link ) );
+      --list->size;
+      return data;
+   }
+   else {
+      return NULL;
+   }
+}
+
 void list_deinit( struct list* list ) {
    struct list_link* link = list->head;
    while ( link ) {

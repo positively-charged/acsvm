@@ -41,6 +41,7 @@ void* list_replace( struct list* list,
 void list_merge( struct list* receiver, struct list* giver );
 // Removes the first node of the list and returns the data of the removed node.
 void* list_shift( struct list* list );
+void* list_remove( struct list* list, struct list_iter* iter );
 void list_deinit( struct list* list );
 
 #endif
