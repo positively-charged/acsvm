@@ -65,8 +65,8 @@ void init_vm( struct vm* vm ) {
 }
 
 void run( struct vm* machine  ) {
-   list_iter_t i;
-   list_iter_init( &i, &machine->scripts );
+   struct list_iter i;
+   list_iterate( &machine->scripts, &i );
    while ( ! list_end( &i ) ) {
       struct script* script = list_data( &i );
       enq_script( machine, script );
@@ -578,8 +578,8 @@ void run_script( struct vm* vm, struct script* script ) {
       break;
    case PCD_PRINTSTRING:
       {
-         list_iter_t i;
-         list_iter_init( &i, &vm->strings );
+         struct list_iter i;
+         list_iterate( &vm->strings, &i );
          int index = 0;
          while ( ! list_end( &i ) ) {
             if ( index == stack[ -1 ] ) {
