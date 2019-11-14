@@ -1,12 +1,8 @@
 #include <stdio.h>
-#include <setjmp.h>
-#include <string.h>
 
 #include "common.h"
-#include "common/str.h"
 #include "common/list.h"
 
-// Memory
 // NOTE: The functions below may be violating the strict-aliasing rule.
 // ==========================================================================
 
@@ -157,16 +153,3 @@ void mem_free_all( void ) {
       g_alloc = next;
    }
 }
-
-// Str
-// ==========================================================================
-
-
-
-// Singly linked list
-// ==========================================================================
-
-
-// File Identity
-// ==========================================================================
-
