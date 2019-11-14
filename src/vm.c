@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "common/str.h"
 #include "vm.h"
 #include "pcode.h"
 
@@ -26,7 +27,7 @@ static void execute_line_special( struct vm* vm, i32 special, i32 arg1,
    i32 arg2 );
 static void execute_acs_execute( struct vm* vm, i32 map, i32 script_number );
 
-void vm_run( const char* data, size_t size ) {
+void vm_run( const u8* data, size_t size ) {
    struct vm vm;
    init_vm( &vm );
    struct object object;
@@ -192,7 +193,7 @@ void run_script( struct vm* vm, struct script* script ) {
    int stack_buffer[ 1000 ];
    int* stack = stack_buffer;
    int* stack_end = stack + 1000;
-   const char* data = vm->object->data + script->offset;
+   const u8* data = vm->object->data + script->offset;
    int opc;
    script->state = SCRIPTSTATE_RUNNING;
    execute_pcode:

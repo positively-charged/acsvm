@@ -7,11 +7,12 @@
 #include <ctype.h>
 
 #include "common.h"
+#include "common/str.h"
 #include "vm.h"
 
 struct chunk {
    char name[ 5 ];
-   const char* data; 
+   const u8* data;
    int size;
    enum {
       CHUNK_UNKNOWN,
@@ -40,7 +41,7 @@ struct chunk {
    } type;
 };
 
-static void init_chunk( struct chunk* chunk, const char* data );
+static void init_chunk( struct chunk* chunk, const u8* data );
 static bool find_chunk( struct object* object, struct chunk* chunk, int type );
 static int get_chunk_type( const char* name );
 static void load_sptr( struct vm* vm, struct object* object,
@@ -52,7 +53,7 @@ static void load_aray( struct vm* vm, struct object* object,
 static void load_aini( struct vm* vm, struct object* object,
    struct chunk* chunk );
 
-void vm_init_object( struct object* object, const char* data, int size ) {
+void vm_init_object( struct object* object, const u8* data, int size ) {
    struct header {
       char id[ 4 ];
       int offset;
@@ -74,7 +75,7 @@ void vm_init_object( struct object* object, const char* data, int size ) {
       object->format = FORMAT_LITTLE_E;
    }
    else if ( memcmp( header.id, "ACS\0", 4 ) == 0 ) {
-      const char* format = data + header.offset - sizeof( int );
+      const u8* format = data + header.offset - sizeof( int );
       if ( memcmp( format, "ACSE", 4 ) == 0 ||
          memcmp( format, "ACSe", 4 ) == 0 ) {
          object->format = format[ 3 ] == 'E' ? FORMAT_BIG_E : FORMAT_LITTLE_E;
@@ -93,7 +94,7 @@ void vm_init_object( struct object* object, const char* data, int size ) {
 }
 
 void vm_list_chunks( struct vm* vm, struct object* object ) {
-   const char* data = object->data + object->chunk_offset;
+   const u8* data = object->data + object->chunk_offset;
    while ( data < object->data + object->size ) {
       struct chunk chunk;
       init_chunk( &chunk, data );
@@ -119,7 +120,7 @@ void vm_list_chunks( struct vm* vm, struct object* object ) {
    }
 }
 
-static void init_chunk( struct chunk* chunk, const char* data ) {
+static void init_chunk( struct chunk* chunk, const u8* data ) {
    memcpy( chunk->name, data, 4 );
    chunk->name[ 4 ] = 0;
    data += sizeof( int );
@@ -131,7 +132,7 @@ static void init_chunk( struct chunk* chunk, const char* data ) {
 
 static bool find_chunk( struct object* object, struct chunk* chunk,
    int type ) {
-   const char* data = object->data + object->chunk_offset;
+   const u8* data = object->data + object->chunk_offset;
    while ( data < object->data + object->size ) {
       init_chunk( chunk, data );
       if ( chunk->type == type ) {
@@ -228,7 +229,7 @@ static void load_sptr( struct vm* vm, struct object* object,
 
 static void load_strl( struct vm* vm, struct object* object,
    struct chunk* chunk ) {
-   const char* data = chunk->data;
+   const u8* data = chunk->data;
    data += sizeof( int );
    int count = 0;
    memcpy( &count, data, sizeof( int ) );
@@ -240,7 +241,7 @@ static void load_strl( struct vm* vm, struct object* object,
       int offset = 0;
       memcpy( &offset, data, sizeof( int ) );
       data += sizeof( int );
-      const char* ch = chunk->data + offset;
+      const u8* ch = chunk->data + offset;
       int k = 0;
       while ( true ) {
          char decoded = *ch;

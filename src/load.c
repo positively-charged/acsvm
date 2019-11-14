@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "common/str.h"
 #include "vm.h"
 
 void vm_init_file_request( struct file_request* request ) {
@@ -24,7 +25,7 @@ void vm_load_file( struct file_request* request, const char* path ) {
    fseek( fh, 0, SEEK_END );
    size_t size = ftell( fh );
    rewind( fh );
-   char* data = malloc( sizeof( char ) * size );
+   u8* data = malloc( sizeof( char ) * size );
    fread( data, sizeof( char ), size, fh );
    request->data = data;
    request->size = size;

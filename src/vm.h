@@ -46,7 +46,7 @@ struct script {
 };
 
 struct object {
-   const char* data;
+   const u8* data;
    int size;
    enum {
       FORMAT_UNKNOWN,
@@ -80,10 +80,10 @@ struct vm {
 #define DIAG_ERR 0x2
 #define DIAG_FATALERR 0x4
 
-void vm_run( const char* data, size_t size );
+void vm_run( const u8* data, size_t size );
 void vm_init_file_request( struct file_request* request );
 void vm_load_file( struct file_request* request, const char* path );
-void vm_init_object( struct object* object, const char* data, int size );
+void vm_init_object( struct object* object, const u8* data, int size );
 void vm_list_chunks( struct vm* vm, struct object* object );
 void v_diag( struct vm* machine, int flags, ... );
 void v_bail( struct vm* machine );
