@@ -83,8 +83,8 @@ struct object {
 struct vm {
    jmp_buf* bail;
    struct object* object;
-   struct script* script_head;
    struct list scripts;
+   struct list waiting_scripts;
    struct list suspended_scripts;
    struct list strings;
    struct var* arrays;

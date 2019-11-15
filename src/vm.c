@@ -12,13 +12,16 @@
 #include "common/list.h"
 #include "vm.h"
 #include "pcode.h"
+#include "debug.h"
 
 static void init_vm( struct vm* vm );
 static void run( struct vm* vm );
+static bool scripts_waiting( struct vm* vm );
 static void run_delayed_script( struct vm* machine );
-static struct script* deq_script( struct vm* machine );
-static void enq_script( struct vm* machine, struct script* script );
-static struct script* get_active_script( struct vm* machine, int number );
+static struct script* deq_script( struct vm* vm );
+static void enq_script( struct vm* vm, struct script* script );
+static bool run_sooner( struct script* a, struct script* b );
+static struct script* get_active_script( struct vm* vm, int number );
 static void add_suspended_script( struct vm* vm, struct script* script );
 static struct script* remove_suspended_script( struct vm* vm,
    i32 script_number );
@@ -55,8 +58,8 @@ void vm_run( const u8* data, size_t size ) {
 
 void init_vm( struct vm* vm ) {
    vm->object = NULL;
-   vm->script_head = NULL;
    list_init( &vm->scripts );
+   list_init( &vm->waiting_scripts );
    list_init( &vm->suspended_scripts );
    list_init( &vm->strings );
    vm->arrays = NULL;
@@ -65,27 +68,28 @@ void init_vm( struct vm* vm ) {
    srand( time( NULL ) );
 }
 
-void run( struct vm* machine  ) {
+void run( struct vm* vm  ) {
+   // OPEN scripts run first.
    struct list_iter i;
-   list_iterate( &machine->scripts, &i );
+   list_iterate( &vm->scripts, &i );
    while ( ! list_end( &i ) ) {
       struct script* script = list_data( &i );
-      enq_script( machine, script );
+      if ( script->type == SCRIPTTYPE_OPEN ) {
+         enq_script( vm, script );
+      }
       list_next( &i );
    }
-
-/*
-   struct script* script = machine->script_head;
-   while ( machine->script_head ) {
-      struct script* script = deq_script( machine );
-      printf( "%d %d\n", script->number, script->delay_amount );
+   // Run scripts.
+   while ( scripts_waiting( vm ) ) {
+      run_delayed_script( vm );
    }
-*/
+}
 
-
-   while ( machine->script_head ) {
-      run_delayed_script( machine );
-   }
+/**
+ * Tells whether there are any scripts waiting to run.
+ */
+static bool scripts_waiting( struct vm* vm ) {
+   return ( list_size( &vm->waiting_scripts ) );
 }
 
 void run_delayed_script( struct vm* machine ) {
@@ -133,49 +137,40 @@ void run_delayed_script( struct vm* machine ) {
 /**
  * Removes the top-most script from the script list.
  */
-struct script* deq_script( struct vm* machine ) {
-   struct script* script = machine->script_head;
-   machine->script_head = script->next;
-   script->next = NULL;
-   return script;
+struct script* deq_script( struct vm* vm ) {
+   return list_shift( &vm->waiting_scripts );
 }
 
 /**
  * Inserts a script into the script priority queue. The scripts in the queue
  * are sorted based on how soon they need to run: a script that needs to run
- * the soonest will appear in the front of the queue.
+ * sooner will appear closer to the front of the queue.
  */
-void enq_script( struct vm* machine, struct script* script ) {
-   struct script* prev_script = NULL;
-   struct script* curr_script = machine->script_head;
-   while ( curr_script && curr_script->delay_amount <= script->delay_amount ) {
-      prev_script = curr_script;
-      curr_script = curr_script->next;
+static void enq_script( struct vm* vm, struct script* script ) {
+   struct list_iter i;
+   list_iterate( &vm->waiting_scripts, &i );
+   while ( ! list_end( &i ) && run_sooner( list_data( &i ), script ) ) {
+      list_next( &i );
    }
-   if ( prev_script ) {
-      script->next = prev_script->next;
-      prev_script->next = script;
-   }
-   else {
-      script->next = machine->script_head;
-      machine->script_head = script;
-   }
+   list_insert_before( &vm->waiting_scripts, &i, script );
 }
 
-struct script* get_active_script( struct vm* machine, int number ) {
-   struct script* script = machine->script_head;
-   while ( script ) {
+/**
+ * Tells whether script A should run sooner than script B.
+ */
+static bool run_sooner( struct script* a, struct script* b ) {
+   return ( a->delay_amount <= b->delay_amount );
+}
+
+struct script* get_active_script( struct vm* vm, int number ) {
+   struct list_iter i;
+   list_iterate( &vm->waiting_scripts, &i );
+   while ( ! list_end( &i ) ) {
+      struct script* script = list_data( &i );
       if ( script->number == number ) {
          return script;
       }
-      struct script* waiting_script = script->waiting;
-      while ( waiting_script ) {
-         if ( waiting_script->number == number ) {
-            return waiting_script;
-         }
-         waiting_script = waiting_script->next;
-      }
-      script = script->next;
+      list_next( &i );
    }
    return NULL;
 }
