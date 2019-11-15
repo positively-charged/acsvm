@@ -49,6 +49,7 @@ static bool find_chunk( struct object* object, struct chunk* chunk, int type );
 static int get_chunk_type( const char* name );
 static void load_sptr( struct vm* vm, struct object* object,
    struct chunk* chunk );
+static void set_script_type( struct script* script, i32 type );
 static void load_strl( struct vm* vm, struct object* object,
    struct chunk* chunk );
 static void load_aray( struct vm* vm, struct object* object,
@@ -209,6 +210,7 @@ static void load_sptr( struct vm* vm, struct object* object,
          script->waiting = NULL;
          script->waiting_tail = NULL;
          script->number = entry.number;
+         set_script_type( script, entry.type );
          script->offset = entry.offset;
          script->delay_amount = 0;
          script->state = SCRIPTSTATE_TERMINATED;
@@ -227,6 +229,31 @@ static void load_sptr( struct vm* vm, struct object* object,
       }
       else {
       }
+   }
+}
+
+static void set_script_type( struct script* script, i32 type ) {
+   switch ( type ) {
+   case SCRIPTTYPE_CLOSED:
+   case SCRIPTTYPE_OPEN:
+   case SCRIPTTYPE_RESPAWN:
+   case SCRIPTTYPE_DEATH:
+   case SCRIPTTYPE_ENTER:
+   case SCRIPTTYPE_PICKUP:
+   case SCRIPTTYPE_BLUERETURN:
+   case SCRIPTTYPE_REDRETURN:
+   case SCRIPTTYPE_WHITERETURN:
+   case SCRIPTTYPE_LIGHTNING:
+   case SCRIPTTYPE_UNLOADING:
+   case SCRIPTTYPE_DISCONNECT:
+   case SCRIPTTYPE_RETURN:
+   case SCRIPTTYPE_EVENT:
+   case SCRIPTTYPE_KILL:
+   case SCRIPTTYPE_REOPEN:
+      script->type = type;
+      break;
+   default:
+      script->type = SCRIPTTYPE_UNKNOWN;
    }
 }
 

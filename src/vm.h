@@ -34,6 +34,25 @@ struct script {
    struct script* waiting_tail;
    int vars[ 20 ];
    int number;
+   enum {
+      SCRIPTTYPE_UNKNOWN = -1,
+      SCRIPTTYPE_CLOSED,
+      SCRIPTTYPE_OPEN,
+      SCRIPTTYPE_RESPAWN,
+      SCRIPTTYPE_DEATH,
+      SCRIPTTYPE_ENTER,
+      SCRIPTTYPE_PICKUP,
+      SCRIPTTYPE_BLUERETURN,
+      SCRIPTTYPE_REDRETURN,
+      SCRIPTTYPE_WHITERETURN,
+      SCRIPTTYPE_LIGHTNING = 12,
+      SCRIPTTYPE_UNLOADING,
+      SCRIPTTYPE_DISCONNECT,
+      SCRIPTTYPE_RETURN,
+      SCRIPTTYPE_EVENT,
+      SCRIPTTYPE_KILL,
+      SCRIPTTYPE_REOPEN,
+   } type;
    int offset;
    int delay_amount;
    enum {
