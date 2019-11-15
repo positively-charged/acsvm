@@ -26,8 +26,9 @@ static void run_script( struct vm* vm, struct script* script );
 static void add_waiting_script( struct script* script,
    struct script* waiting_script );
 static void execute_line_special( struct vm* vm, i32 special, i32 arg1,
-   i32 arg2 );
-static void execute_acs_execute( struct vm* vm, i32 map, i32 script_number );
+   i32 arg2, i32 arg3 );
+static void execute_acs_execute( struct vm* vm, i32 script_number, i32 map,
+   i32 arg1 );
 
 void vm_run( const u8* data, size_t size ) {
    struct vm vm;
@@ -185,9 +186,16 @@ static void add_suspended_script( struct vm* vm, struct script* script ) {
 
 static struct script* remove_suspended_script( struct vm* vm,
    i32 script_number ) {
-   //list_iter_t i;
-   
-   
+   struct list_iter i;
+   list_iterate( &vm->suspended_scripts, &i );
+   while ( ! list_end( &i ) ) {
+      struct script* script = list_data( &i );
+      if ( script->number == script_number ) {
+         list_remove( &vm->suspended_scripts, &i );
+         return script;
+      }
+      list_next( &i );
+   }
    return NULL;
 }
 
@@ -224,6 +232,7 @@ void run_script( struct vm* vm, struct script* script ) {
       return;
    case PCD_SUSPEND:
       script->state = SCRIPTSTATE_SUSPENDED;
+      script->offset = data - vm->object->data;
       return;
    case PCD_PUSHNUMBER:
       memcpy( stack, data, sizeof( *stack ) );
@@ -625,8 +634,27 @@ void run_script( struct vm* vm, struct script* script ) {
       break;
    }
    case PCD_LSPEC1DIRECTB:
-      execute_line_special( vm, data[ 0 ], data[ 1 ], 0 );
+      execute_line_special( vm,
+         data[ 0 ],
+         data[ 1 ],
+         0, 0 );
       data += sizeof( data[ 0 ] ) * 2; // Increment past the two arguments.
+      break;
+   case PCD_LSPEC2DIRECTB:
+      execute_line_special( vm,
+         data[ 0 ],
+         data[ 1 ],
+         data[ 2 ],
+         0 );
+      data += sizeof( data[ 0 ] ) * 3; // Increment past the three arguments.
+      break;
+   case PCD_LSPEC3DIRECTB:
+      execute_line_special( vm,
+         data[ 0 ],
+         data[ 1 ],
+         data[ 2 ],
+         data[ 3 ] );
+      data += sizeof( data[ 0 ] ) * 4; // Increment past the four arguments.
       break;
    case PCD_LSPEC1:
    case PCD_LSPEC2:
@@ -752,21 +780,23 @@ void add_waiting_script( struct script* script,
 }
 
 static void execute_line_special( struct vm* vm, i32 special, i32 arg1,
-   i32 arg2 ) {
+   i32 arg2, i32 arg3 ) {
    switch ( special ) {
    case LSPEC_ACSEXECUTE:
-      execute_acs_execute( vm, arg1, arg2 );
+      execute_acs_execute( vm, arg1, arg2, arg3 );
       break;
    default:
       UNREACHABLE();
    }
 }
 
-static void execute_acs_execute( struct vm* vm, i32 map, i32 script_number ) {
+static void execute_acs_execute( struct vm* vm, i32 script_number, i32 map,
+   i32 arg1 ) {
    // Resume a suspended script.
    struct script* script = remove_suspended_script( vm, script_number );
    if ( script != NULL ) {
-      
+      enq_script( vm, script );
+      return;
    }
 }
 
