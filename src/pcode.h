@@ -1,7 +1,7 @@
 #ifndef SRC_PCODE_H
 #define SRC_PCODE_H
 
-enum {
+enum opcode {
    PCD_NOP,
    PCD_TERMINATE,
    PCD_SUSPEND,

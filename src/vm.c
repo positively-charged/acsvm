@@ -14,6 +14,14 @@
 #include "pcode.h"
 #include "debug.h"
 
+struct turn {
+   struct script* script;
+   i32 opcode;
+   const u8* ip; // Instruction pointer.
+   bool finished;
+   i32* stack;
+};
+
 static void init_vm( struct vm* vm );
 static void run( struct vm* vm );
 static bool scripts_waiting( struct vm* vm );
@@ -25,7 +33,10 @@ static struct script* get_active_script( struct vm* vm, int number );
 static void add_suspended_script( struct vm* vm, struct script* script );
 static struct script* remove_suspended_script( struct vm* vm,
    i32 script_number );
-static void run_script( struct vm* vm, struct script* script );
+static void init_turn( struct turn* turn, struct script* script );
+static void run_script( struct vm* vm, struct turn* turn );
+static void run_instruction( struct vm* vm, struct turn* turn );
+static void decode_opcode( struct vm* vm, struct turn* turn );
 static void add_waiting_script( struct script* script,
    struct script* waiting_script );
 static void execute_line_special( struct vm* vm, i32 special, i32 arg1,
@@ -104,7 +115,9 @@ void run_delayed_script( struct vm* machine ) {
          active_script = active_script->next;
       }
    }
-   run_script( machine, script );
+   struct turn turn;
+   init_turn( &turn, script );
+   run_script( machine, &turn );
    switch ( script->state ) {
    case SCRIPTSTATE_WAITING:
       break;
@@ -194,272 +207,275 @@ static struct script* remove_suspended_script( struct vm* vm,
    return NULL;
 }
 
-void run_script( struct vm* vm, struct script* script ) {
+static void init_turn( struct turn* turn, struct script* script ) {
+   turn->script = script;
+   turn->opcode = PCD_NOP;
+   turn->ip = NULL;
+   turn->finished = false;
+   turn->stack = NULL;
+}
+
+static void run_script( struct vm* vm, struct turn* turn ) {
    int stack_buffer[ 1000 ];
    int* stack = stack_buffer;
    int* stack_end = stack + 1000;
-   const u8* data = vm->object->data + script->offset;
-   int opc;
-   script->state = SCRIPTSTATE_RUNNING;
-   execute_pcode:
-   // Decode opcode.
-   opc = PCD_NOP;
-   if ( vm->object->small_code ) {
-      unsigned char ch = 0;
-      memcpy( &ch, data, 1 );
-      opc = ( int ) ch;
-      ++data;
-      if ( opc >= 240 ) {
-         memcpy( &ch, data, 1 );
-         opc += ( int ) ch;
-         ++data;
-      }
+   turn->ip = vm->object->data + turn->script->offset;
+   turn->stack = stack;
+   turn->script->state = SCRIPTSTATE_RUNNING;
+   while ( ! turn->finished ) {
+      run_instruction( vm, turn );
    }
-   else {
-   }
-   // Execute instruction.
-   switch ( opc ) {
+}
+
+/**
+ * Executes a single instruction of a script.
+ */
+static void run_instruction( struct vm* vm, struct turn* turn ) {
+   decode_opcode( vm, turn );
+   switch ( turn->opcode ) {
    case PCD_NOP:
       // Do nothing.
       break;
    case PCD_TERMINATE:
-      script->state = SCRIPTSTATE_TERMINATED;
-      return;
+      turn->script->state = SCRIPTSTATE_TERMINATED;
+      turn->finished = true;
+      break;
    case PCD_SUSPEND:
-      script->state = SCRIPTSTATE_SUSPENDED;
-      script->offset = data - vm->object->data;
-      return;
+      turn->script->state = SCRIPTSTATE_SUSPENDED;
+      turn->script->offset = turn->ip - vm->object->data;
+      turn->finished = true;
+      break;
    case PCD_PUSHNUMBER:
-      memcpy( stack, data, sizeof( *stack ) );
-      ++stack;
-      data += sizeof( *stack );
+      memcpy( turn->stack, turn->ip, sizeof( *turn->stack ) );
+      ++turn->stack;
+      turn->ip += sizeof( *turn->stack );
       break;
    case PCD_ADD:
-      stack[ -2 ] =
-         stack[ -2 ] +
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] +
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_SUBTRACT:
-      stack[ -2 ] =
-         stack[ -2 ] -
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] -
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_MULTIPLY:
-      stack[ -2 ] =
-         stack[ -2 ] *
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] *
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_DIVIDE:
-      if ( stack[ -1 ] == 0 ) {
+      if ( turn->stack[ -1 ] == 0 ) {
          divzero_err:
          v_diag( vm, DIAG_ERR,
-            "division by zero in script %d", script->number );
+            "division by zero in script %d", turn->script->number );
          v_bail( vm );
       }
-      stack[ -2 ] =
-         stack[ -2 ] /
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] /
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_MODULUS:
-      if ( stack[ -1 ] == 0 ) {
+      if ( turn->stack[ -1 ] == 0 ) {
          modzero_err:
          v_diag( vm, DIAG_ERR,
-            "modulo by zero in script %d", script->number );
+            "modulo by zero in script %d", turn->script->number );
          v_bail( vm );
       }
-      stack[ -2 ] =
-         stack[ -2 ] %
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] %
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_EQ:
-      stack[ -2 ] =
-         stack[ -2 ] ==
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] ==
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_NE:
-      stack[ -2 ] =
-         stack[ -2 ] !=
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] !=
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_LT:
-      stack[ -2 ] =
-         stack[ -2 ] <
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] <
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_GT:
-      stack[ -2 ] =
-         stack[ -2 ] >
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] >
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_LE:
-      stack[ -2 ] =
-         stack[ -2 ] <=
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] <=
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_GE:
-      stack[ -2 ] =
-         stack[ -2 ] >=
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] >=
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_ASSIGNSCRIPTVAR:
-      script->vars[ ( int ) *data ] = stack[ -1 ];
-      --stack;
-      ++data;
+      turn->script->vars[ ( int ) *turn->ip ] = turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_ASSIGNMAPVAR:
-      vm->vars[ ( int ) *data ] = stack[ -1 ];
-      --stack;
-      ++data;
+      vm->vars[ ( int ) *turn->ip ] = turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_PUSHSCRIPTVAR: {
-      int index = *data;
-      *stack = script->vars[ index ];
-      ++stack;
-      ++data;
+      int index = *turn->ip;
+      *turn->stack = turn->script->vars[ index ];
+      ++turn->stack;
+      ++turn->ip;
       break;
    }
    case PCD_PUSHMAPVAR:
-      *stack = vm->vars[ ( int ) *data ];
-      ++stack;
-      ++data;
+      *turn->stack = vm->vars[ ( int ) *turn->ip ];
+      ++turn->stack;
+      ++turn->ip;
       break;
    case PCD_ADDSCRIPTVAR:
-      script->vars[ ( int ) *data ] += stack[ -1 ];
-      --stack;
-      ++data;
+      turn->script->vars[ ( int ) *turn->ip ] += turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_ADDMAPVAR:
-      vm->vars[ ( int ) *data ] += stack[ -1 ];
-      --stack;
-      ++data;
+      vm->vars[ ( int ) *turn->ip ] += turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_SUBSCRIPTVAR:
-      script->vars[ ( int ) *data ] -= stack[ -1 ];
-      --stack;
-      ++data;
+      turn->script->vars[ ( int ) *turn->ip ] -= turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_SUBMAPVAR:
-      vm->vars[ ( int ) *data ] -= stack[ -1 ];
-      --stack;
-      ++data;
+      vm->vars[ ( int ) *turn->ip ] -= turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_MULSCRIPTVAR:
-      script->vars[ ( int ) *data ] *= stack[ -1 ];
-      --stack;
-      ++data;
+      turn->script->vars[ ( int ) *turn->ip ] *= turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_MULMAPVAR:
-      vm->vars[ ( int ) *data ] *= stack[ -1 ];
-      --stack;
-      ++data;
+      vm->vars[ ( int ) *turn->ip ] *= turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_DIVSCRIPTVAR:
-      if ( stack[ -1 ] == 0 ) {
+      if ( turn->stack[ -1 ] == 0 ) {
          goto divzero_err;
       }
-      script->vars[ ( int ) *data ] /= stack[ -1 ];
-      --stack;
-      ++data;
+      turn->script->vars[ ( int ) *turn->ip ] /= turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_DIVMAPVAR:
-      if ( stack[ -1 ] == 0 ) {
+      if ( turn->stack[ -1 ] == 0 ) {
          goto divzero_err;
       }
-      vm->vars[ ( int ) *data ] /= stack[ -1 ];
-      --stack;
-      ++data;
+      vm->vars[ ( int ) *turn->ip ] /= turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_MODSCRIPTVAR:
-      if ( stack[ -1 ] == 0 ) {
+      if ( turn->stack[ -1 ] == 0 ) {
          goto modzero_err;
       }
-      script->vars[ ( int ) *data ] %= stack[ -1 ];
-      --stack;
-      ++data;
+      turn->script->vars[ ( int ) *turn->ip ] %= turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_MODMAPVAR:
-      if ( stack[ -1 ] == 0 ) {
+      if ( turn->stack[ -1 ] == 0 ) {
          goto modzero_err;
       }
-      vm->vars[ ( int ) *data ] %= stack[ -1 ];
-      --stack;
-      ++data;
+      vm->vars[ ( int ) *turn->ip ] %= turn->stack[ -1 ];
+      --turn->stack;
+      ++turn->ip;
       break;
    case PCD_INCSCRIPTVAR:
-      ++script->vars[ ( int ) *data ];
-      ++data;
+      ++turn->script->vars[ ( int ) *turn->ip ];
+      ++turn->ip;
       break;
    case PCD_INCMAPVAR:
-      ++vm->vars[ ( int ) *data ];
-      ++data;
+      ++vm->vars[ ( int ) *turn->ip ];
+      ++turn->ip;
       break;
    case PCD_DECSCRIPTVAR:
-      --script->vars[ ( int ) *data ];
-      ++data;
+      --turn->script->vars[ ( int ) *turn->ip ];
+      ++turn->ip;
       break;
    case PCD_DECMAPVAR:
-      --vm->vars[ ( int ) *data ];
-      ++data;
+      --vm->vars[ ( int ) *turn->ip ];
+      ++turn->ip;
       break;
    case PCD_GOTO:
       {
          int offset;
-         memcpy( &offset, data, sizeof( offset ) );
-         data = vm->object->data + offset;
+         memcpy( &offset, turn->ip, sizeof( offset ) );
+         turn->ip = vm->object->data + offset;
       }
       break;
    case PCD_IFGOTO:
       {
          int offset;
-         memcpy( &offset, data, sizeof( offset ) );
-         --stack;
-         if ( *stack ) {
-            data = vm->object->data + offset;
+         memcpy( &offset, turn->ip, sizeof( offset ) );
+         --turn->stack;
+         if ( *turn->stack ) {
+            turn->ip = vm->object->data + offset;
          }
          else {
-            data += sizeof( offset );
+            turn->ip += sizeof( offset );
          }
       }
       break;
    case PCD_DROP:
-      --stack;
+      --turn->stack;
       break;
    case PCD_DELAY:
-      --stack;
-      if ( *stack > 0 ) {
-         script->delay_amount = *stack;
-         script->state = SCRIPTSTATE_DELAYED;
-         script->offset = data - vm->object->data;
+      --turn->stack;
+      if ( *turn->stack > 0 ) {
+         turn->script->delay_amount = *turn->stack;
+         turn->script->state = SCRIPTSTATE_DELAYED;
+         turn->script->offset = turn->ip - vm->object->data;
          return;
       }
       break;
    case PCD_DELAYDIRECT:
       {
          int delay_amount;
-         memcpy( &delay_amount, data, sizeof( delay_amount ) );
-         data += sizeof( delay_amount );
+         memcpy( &delay_amount, turn->ip, sizeof( delay_amount ) );
+         turn->ip += sizeof( delay_amount );
          if ( delay_amount > 0 ) {
-            script->delay_amount = delay_amount;
-            script->state = SCRIPTSTATE_DELAYED;
-            script->offset = data - vm->object->data;
+            turn->script->delay_amount = delay_amount;
+            turn->script->state = SCRIPTSTATE_DELAYED;
+            turn->script->offset = turn->ip - vm->object->data;
             return;
          }
       }
       break;
    case PCD_RANDOM:
-      stack[ -2 ] = stack[ -2 ] + rand() % ( stack[ -1 ] - stack[ -2 ] + 1 );
-      --stack;
+      turn->stack[ -2 ] = turn->stack[ -2 ] + rand() % ( turn->stack[ -1 ] - turn->stack[ -2 ] + 1 );
+      --turn->stack;
       break;
    case PCD_RANDOMDIRECT:
       {
@@ -467,73 +483,73 @@ void run_script( struct vm* vm, struct script* script ) {
             int min;
             int max;
          } args;
-         memcpy( &args, data, sizeof( args ) );
-         data += sizeof( args );
-         *stack = args.min + rand() % ( args.max - args.min + 1 );
-         ++stack;
+         memcpy( &args, turn->ip, sizeof( args ) );
+         turn->ip += sizeof( args );
+         *turn->stack = args.min + rand() % ( args.max - args.min + 1 );
+         ++turn->stack;
       }
       break;
    case PCD_RESTART:
-      data = vm->object->data + script->offset;
+      turn->ip = vm->object->data + turn->script->offset;
       break;
    case PCD_ANDLOGICAL:
-      stack[ -2 ] =
-         stack[ -2 ] &&
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] &&
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_ORLOGICAL:
-      stack[ -2 ] =
-         stack[ -2 ] ||
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] ||
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_ANDBITWISE:
-      stack[ -2 ] =
-         stack[ -2 ] &
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] &
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_ORBITWISE:
-      stack[ -2 ] =
-         stack[ -2 ] |
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] |
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_EORBITWISE:
-      stack[ -2 ] =
-         stack[ -2 ] ^
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] ^
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_NEGATELOGICAL:
-      stack[ -1 ] = ( ! stack[ -1 ] );
+      turn->stack[ -1 ] = ( ! turn->stack[ -1 ] );
       break;
    case PCD_LSHIFT:
-      stack[ -2 ] =
-         stack[ -2 ] <<
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] <<
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_RSHIFT:
-      stack[ -2 ] =
-         stack[ -2 ] >>
-         stack[ -1 ];
-      --stack;
+      turn->stack[ -2 ] =
+         turn->stack[ -2 ] >>
+         turn->stack[ -1 ];
+      --turn->stack;
       break;
    case PCD_UNARYMINUS:
-      stack[ -1 ] = ( - stack[ -1 ] );
+      turn->stack[ -1 ] = ( - turn->stack[ -1 ] );
       break;
    case PCD_IFNOTGOTO:
       {
          int offset;
-         memcpy( &offset, data, sizeof( offset ) );
-         --stack;
-         if ( ! *stack ) {
-            data = vm->object->data + offset;
+         memcpy( &offset, turn->ip, sizeof( offset ) );
+         --turn->stack;
+         if ( ! *turn->stack ) {
+            turn->ip = vm->object->data + offset;
          }
          else {
-            data += sizeof( offset );
+            turn->ip += sizeof( offset );
          }
       }
       break;
@@ -541,19 +557,19 @@ void run_script( struct vm* vm, struct script* script ) {
    case PCD_SCRIPTWAITDIRECT:
       {
          int number;
-         if ( opc == PCD_SCRIPTWAITDIRECT ) {
-            memcpy( &number, data, sizeof( number ) );
-            data += sizeof( number );
+         if ( turn->opcode == PCD_SCRIPTWAITDIRECT ) {
+            memcpy( &number, turn->ip, sizeof( number ) );
+            turn->ip += sizeof( number );
          }
          else {
-            number = stack[ -1 ];
-            --stack;
+            number = turn->stack[ -1 ];
+            --turn->stack;
          }
          struct script* target_script = get_active_script( vm, number );
          if ( target_script ) {
-            add_waiting_script( target_script, script );
-            script->state = SCRIPTSTATE_WAITING;
-            script->offset = data - vm->object->data;
+            add_waiting_script( target_script, turn->script );
+            turn->script->state = SCRIPTSTATE_WAITING;
+            turn->script->offset = turn->ip - vm->object->data;
             return;
          }
       }
@@ -564,14 +580,14 @@ void run_script( struct vm* vm, struct script* script ) {
             int value;
             int offset;
          } args;
-         memcpy( &args, data, sizeof( args ) );
-         if ( stack[ -1 ] == args.value ) {
-            data = vm->object->data + args.offset;
+         memcpy( &args, turn->ip, sizeof( args ) );
+         if ( turn->stack[ -1 ] == args.value ) {
+            turn->ip = vm->object->data + args.offset;
          }
          else {
-            data += sizeof( args );
+            turn->ip += sizeof( args );
          }
-         --stack;
+         --turn->stack;
       }
       break;
    case PCD_BEGINPRINT:
@@ -586,7 +602,7 @@ void run_script( struct vm* vm, struct script* script ) {
          list_iterate( &vm->strings, &i );
          int index = 0;
          while ( ! list_end( &i ) ) {
-            if ( index == stack[ -1 ] ) {
+            if ( index == turn->stack[ -1 ] ) {
                struct str* string = list_data( &i );
                str_append( &vm->msg, string->value );
                break;
@@ -594,62 +610,62 @@ void run_script( struct vm* vm, struct script* script ) {
             ++index;
             list_next( &i );
          }
-         --stack;
+         --turn->stack;
       }
       break;
    case PCD_PRINTNUMBER:
       {
          char text[ 11 ];
-         sprintf( text, "%d", stack[ -1 ] );
+         sprintf( text, "%d", turn->stack[ -1 ] );
          str_append( &vm->msg, text );
-         --stack;
+         --turn->stack;
       }
       break;
    case PCD_PRINTCHARACTER:
       {
-         char text[] = { ( char ) stack[ -1 ], '\0' };
+         char text[] = { ( char ) turn->stack[ -1 ], '\0' };
          str_append( &vm->msg, text );
-         --stack;
+         --turn->stack;
       }
       break;
    case PCD_PUSHBYTE:
-      *stack = *data;
-      ++stack;
-      ++data;
+      *turn->stack = *turn->ip;
+      ++turn->stack;
+      ++turn->ip;
       break;
    case PCD_PUSHMAPARRAY: {
-      int index = stack[ -1 ];
-      if ( index >= 0 && index < vm->arrays[ ( int ) *data ].size ) {
-         stack[ -1 ] = vm->arrays[ ( int ) *data ].elements[ stack[ -1 ] ];
+      int index = turn->stack[ -1 ];
+      if ( index >= 0 && index < vm->arrays[ ( int ) *turn->ip ].size ) {
+         turn->stack[ -1 ] = vm->arrays[ ( int ) *turn->ip ].elements[ turn->stack[ -1 ] ];
       }
       else {
-         stack[ -1 ] = 0;
+         turn->stack[ -1 ] = 0;
       }
-      ++data;
+      ++turn->ip;
       break;
    }
    case PCD_LSPEC1DIRECTB:
       execute_line_special( vm,
-         data[ 0 ],
-         data[ 1 ],
+         turn->ip[ 0 ],
+         turn->ip[ 1 ],
          0, 0 );
-      data += sizeof( data[ 0 ] ) * 2; // Increment past the two arguments.
+      turn->ip += sizeof( turn->ip[ 0 ] ) * 2; // Increment past the two arguments.
       break;
    case PCD_LSPEC2DIRECTB:
       execute_line_special( vm,
-         data[ 0 ],
-         data[ 1 ],
-         data[ 2 ],
+         turn->ip[ 0 ],
+         turn->ip[ 1 ],
+         turn->ip[ 2 ],
          0 );
-      data += sizeof( data[ 0 ] ) * 3; // Increment past the three arguments.
+      turn->ip += sizeof( turn->ip[ 0 ] ) * 3; // Increment past the three arguments.
       break;
    case PCD_LSPEC3DIRECTB:
       execute_line_special( vm,
-         data[ 0 ],
-         data[ 1 ],
-         data[ 2 ],
-         data[ 3 ] );
-      data += sizeof( data[ 0 ] ) * 4; // Increment past the four arguments.
+         turn->ip[ 0 ],
+         turn->ip[ 1 ],
+         turn->ip[ 2 ],
+         turn->ip[ 3 ] );
+      turn->ip += sizeof( turn->ip[ 0 ] ) * 4; // Increment past the four arguments.
       break;
    case PCD_LSPEC1:
    case PCD_LSPEC2:
@@ -756,11 +772,27 @@ void run_script( struct vm* vm, struct script* script ) {
       v_bail( vm );
    default:
       v_diag( vm, DIAG_FATALERR,
-         "unknown instruction (opcode is %d)", opc );
+         "unknown instruction (opcode is %d)", turn->opcode );
       v_bail( vm );
    }
-   // Keep executing instructions.
-   goto execute_pcode;
+}
+
+static void decode_opcode( struct vm* vm, struct turn* turn ) {
+   i32 opc = PCD_NOP;
+   if ( vm->object->small_code ) {
+      unsigned char ch = 0;
+      memcpy( &ch, turn->ip, 1 );
+      opc = ( int ) ch;
+      ++turn->ip;
+      if ( opc >= 240 ) {
+         memcpy( &ch, turn->ip, 1 );
+         opc += ( int ) ch;
+         ++turn->ip;
+      }
+   }
+   else {
+   }
+   turn->opcode = opc;
 }
 
 void add_waiting_script( struct script* script,
