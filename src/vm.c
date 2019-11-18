@@ -37,6 +37,8 @@ static void init_turn( struct turn* turn, struct script* script );
 static void run_script( struct vm* vm, struct turn* turn );
 static void run_instruction( struct vm* vm, struct turn* turn );
 static void decode_opcode( struct vm* vm, struct turn* turn );
+static void push( struct turn* turn, i32 value );
+static i32 pop( struct turn* turn );
 static void add_waiting_script( struct script* script,
    struct script* waiting_script );
 static void execute_line_special( struct vm* vm, i32 special, i32 arg1,
@@ -246,171 +248,183 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
       turn->finished = true;
       break;
    case PCD_PUSHNUMBER:
-      memcpy( turn->stack, turn->ip, sizeof( *turn->stack ) );
-      ++turn->stack;
-      turn->ip += sizeof( *turn->stack );
+      {
+         i32 value;
+         memcpy( &value, turn->ip, sizeof( value ) );
+         push( turn, value );
+         turn->ip += sizeof( *turn->stack );
+      }
       break;
    case PCD_ADD:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] +
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l + r );
+      }
       break;
    case PCD_SUBTRACT:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] -
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l - r );
+      }
       break;
    case PCD_MULTIPLY:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] *
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l * r );
+      }
       break;
    case PCD_DIVIDE:
-      if ( turn->stack[ -1 ] == 0 ) {
-         divzero_err:
-         v_diag( vm, DIAG_ERR,
-            "division by zero in script %d", turn->script->number );
-         v_bail( vm );
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         if ( r == 0 ) {
+            divzero_err:
+            v_diag( vm, DIAG_ERR,
+               "division by zero in script %d", turn->script->number );
+            v_bail( vm );
+         }
+         push( turn, l / r );
       }
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] /
-         turn->stack[ -1 ];
-      --turn->stack;
       break;
    case PCD_MODULUS:
-      if ( turn->stack[ -1 ] == 0 ) {
-         modzero_err:
-         v_diag( vm, DIAG_ERR,
-            "modulo by zero in script %d", turn->script->number );
-         v_bail( vm );
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         if ( r == 0 ) {
+            modzero_err:
+            v_diag( vm, DIAG_ERR,
+               "modulo by zero in script %d", turn->script->number );
+            v_bail( vm );
+         }
+         push( turn, l % r );
       }
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] %
-         turn->stack[ -1 ];
-      --turn->stack;
       break;
    case PCD_EQ:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] ==
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l == r );
+      }
       break;
    case PCD_NE:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] !=
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l != r );
+      }
       break;
    case PCD_LT:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] <
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l < r );
+      }
       break;
    case PCD_GT:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] >
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l > r );
+      }
       break;
    case PCD_LE:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] <=
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l <= r );
+      }
       break;
    case PCD_GE:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] >=
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l >= r );
+      }
       break;
    case PCD_ASSIGNSCRIPTVAR:
-      turn->script->vars[ ( int ) *turn->ip ] = turn->stack[ -1 ];
-      --turn->stack;
+      turn->script->vars[ ( int ) *turn->ip ] = pop( turn );
       ++turn->ip;
       break;
    case PCD_ASSIGNMAPVAR:
-      vm->vars[ ( int ) *turn->ip ] = turn->stack[ -1 ];
-      --turn->stack;
+      vm->vars[ ( int ) *turn->ip ] = pop( turn );
       ++turn->ip;
       break;
    case PCD_PUSHSCRIPTVAR: {
       int index = *turn->ip;
-      *turn->stack = turn->script->vars[ index ];
-      ++turn->stack;
+      push( turn, turn->script->vars[ index ] );
       ++turn->ip;
       break;
    }
    case PCD_PUSHMAPVAR:
-      *turn->stack = vm->vars[ ( int ) *turn->ip ];
-      ++turn->stack;
+      push( turn, vm->vars[ ( int ) *turn->ip ] );
       ++turn->ip;
       break;
    case PCD_ADDSCRIPTVAR:
-      turn->script->vars[ ( int ) *turn->ip ] += turn->stack[ -1 ];
-      --turn->stack;
+      turn->script->vars[ ( int ) *turn->ip ] += pop( turn );
       ++turn->ip;
       break;
    case PCD_ADDMAPVAR:
-      vm->vars[ ( int ) *turn->ip ] += turn->stack[ -1 ];
-      --turn->stack;
+      vm->vars[ ( int ) *turn->ip ] += pop( turn );
       ++turn->ip;
       break;
    case PCD_SUBSCRIPTVAR:
-      turn->script->vars[ ( int ) *turn->ip ] -= turn->stack[ -1 ];
-      --turn->stack;
+      turn->script->vars[ ( int ) *turn->ip ] -= pop( turn );
       ++turn->ip;
       break;
    case PCD_SUBMAPVAR:
-      vm->vars[ ( int ) *turn->ip ] -= turn->stack[ -1 ];
-      --turn->stack;
+      vm->vars[ ( int ) *turn->ip ] -= pop( turn );
       ++turn->ip;
       break;
    case PCD_MULSCRIPTVAR:
-      turn->script->vars[ ( int ) *turn->ip ] *= turn->stack[ -1 ];
-      --turn->stack;
+      turn->script->vars[ ( int ) *turn->ip ] *= pop( turn );
       ++turn->ip;
       break;
    case PCD_MULMAPVAR:
-      vm->vars[ ( int ) *turn->ip ] *= turn->stack[ -1 ];
-      --turn->stack;
+      vm->vars[ ( int ) *turn->ip ] *= pop( turn );
       ++turn->ip;
       break;
    case PCD_DIVSCRIPTVAR:
-      if ( turn->stack[ -1 ] == 0 ) {
-         goto divzero_err;
+      {
+         i32 r = pop( turn );
+         if ( r == 0 ) {
+            goto divzero_err;
+         }
+         turn->script->vars[ ( int ) *turn->ip ] /= r;
+         ++turn->ip;
       }
-      turn->script->vars[ ( int ) *turn->ip ] /= turn->stack[ -1 ];
-      --turn->stack;
-      ++turn->ip;
       break;
    case PCD_DIVMAPVAR:
-      if ( turn->stack[ -1 ] == 0 ) {
-         goto divzero_err;
+      {
+         i32 r = pop( turn );
+         if ( r == 0 ) {
+            goto divzero_err;
+         }
+         vm->vars[ ( int ) *turn->ip ] /= r;
+         ++turn->ip;
       }
-      vm->vars[ ( int ) *turn->ip ] /= turn->stack[ -1 ];
-      --turn->stack;
-      ++turn->ip;
       break;
    case PCD_MODSCRIPTVAR:
-      if ( turn->stack[ -1 ] == 0 ) {
-         goto modzero_err;
+      {
+         i32 r = pop( turn );
+         if ( r == 0 ) {
+            goto modzero_err;
+         }
+         turn->script->vars[ ( int ) *turn->ip ] %= r;
+         ++turn->ip;
       }
-      turn->script->vars[ ( int ) *turn->ip ] %= turn->stack[ -1 ];
-      --turn->stack;
-      ++turn->ip;
       break;
    case PCD_MODMAPVAR:
-      if ( turn->stack[ -1 ] == 0 ) {
-         goto modzero_err;
+      {
+         i32 r = pop( turn );
+         if ( r == 0 ) {
+            goto modzero_err;
+         }
+         vm->vars[ ( int ) *turn->ip ] %= r;
+         ++turn->ip;
       }
-      vm->vars[ ( int ) *turn->ip ] %= turn->stack[ -1 ];
-      --turn->stack;
-      ++turn->ip;
       break;
    case PCD_INCSCRIPTVAR:
       ++turn->script->vars[ ( int ) *turn->ip ];
@@ -439,8 +453,8 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
       {
          int offset;
          memcpy( &offset, turn->ip, sizeof( offset ) );
-         --turn->stack;
-         if ( *turn->stack ) {
+         i32 value = pop( turn );
+         if ( value != 0 ) {
             turn->ip = vm->object->data + offset;
          }
          else {
@@ -449,15 +463,17 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
       }
       break;
    case PCD_DROP:
-      --turn->stack;
+      pop( turn );
       break;
    case PCD_DELAY:
-      --turn->stack;
-      if ( *turn->stack > 0 ) {
-         turn->script->delay_amount = *turn->stack;
-         turn->script->state = SCRIPTSTATE_DELAYED;
-         turn->script->offset = turn->ip - vm->object->data;
-         return;
+      {
+         i32 amount = pop( turn );
+         if ( amount > 0 ) {
+            turn->script->delay_amount = amount;
+            turn->script->state = SCRIPTSTATE_DELAYED;
+            turn->script->offset = turn->ip - vm->object->data;
+            return;
+         }
       }
       break;
    case PCD_DELAYDIRECT:
@@ -474,8 +490,11 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
       }
       break;
    case PCD_RANDOM:
-      turn->stack[ -2 ] = turn->stack[ -2 ] + rand() % ( turn->stack[ -1 ] - turn->stack[ -2 ] + 1 );
-      --turn->stack;
+      {
+         i32 max = pop( turn );
+         i32 min = pop( turn );
+         push( turn, min + rand() % ( max - min + 1 ) );
+      }
       break;
    case PCD_RANDOMDIRECT:
       {
@@ -485,67 +504,73 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
          } args;
          memcpy( &args, turn->ip, sizeof( args ) );
          turn->ip += sizeof( args );
-         *turn->stack = args.min + rand() % ( args.max - args.min + 1 );
-         ++turn->stack;
+         push( turn, args.min + rand() % ( args.max - args.min + 1 ) );
       }
       break;
    case PCD_RESTART:
       turn->ip = vm->object->data + turn->script->offset;
       break;
    case PCD_ANDLOGICAL:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] &&
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l && r );
+      }
       break;
    case PCD_ORLOGICAL:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] ||
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l || r );
+      }
       break;
    case PCD_ANDBITWISE:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] &
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l & r );
+      }
       break;
    case PCD_ORBITWISE:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] |
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l | r );
+      }
       break;
    case PCD_EORBITWISE:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] ^
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l ^ r );
+      }
       break;
    case PCD_NEGATELOGICAL:
-      turn->stack[ -1 ] = ( ! turn->stack[ -1 ] );
+      push( turn, ! pop( turn ) );
       break;
    case PCD_LSHIFT:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] <<
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l << r );
+      }
       break;
    case PCD_RSHIFT:
-      turn->stack[ -2 ] =
-         turn->stack[ -2 ] >>
-         turn->stack[ -1 ];
-      --turn->stack;
+      {
+         i32 r = pop( turn );
+         i32 l = pop( turn );
+         push( turn, l >> r );
+      }
       break;
    case PCD_UNARYMINUS:
-      turn->stack[ -1 ] = ( - turn->stack[ -1 ] );
+      push( turn, - pop( turn ) );
       break;
    case PCD_IFNOTGOTO:
       {
          int offset;
          memcpy( &offset, turn->ip, sizeof( offset ) );
-         --turn->stack;
-         if ( ! *turn->stack ) {
+         i32 value = pop( turn );
+         if ( value == 0 ) {
             turn->ip = vm->object->data + offset;
          }
          else {
@@ -562,8 +587,7 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
             turn->ip += sizeof( number );
          }
          else {
-            number = turn->stack[ -1 ];
-            --turn->stack;
+            number = pop( turn );
          }
          struct script* target_script = get_active_script( vm, number );
          if ( target_script ) {
@@ -581,13 +605,14 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
             int offset;
          } args;
          memcpy( &args, turn->ip, sizeof( args ) );
-         if ( turn->stack[ -1 ] == args.value ) {
+         i32 value = pop( turn );
+         if ( value == args.value ) {
             turn->ip = vm->object->data + args.offset;
          }
          else {
             turn->ip += sizeof( args );
+            push( turn, value );
          }
-         --turn->stack;
       }
       break;
    case PCD_BEGINPRINT:
@@ -600,9 +625,10 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
       {
          struct list_iter i;
          list_iterate( &vm->strings, &i );
-         int index = 0;
+         const i32 requested_string = pop( turn );
+         i32 index = 0;
          while ( ! list_end( &i ) ) {
-            if ( index == turn->stack[ -1 ] ) {
+            if ( index == requested_string ) {
                struct str* string = list_data( &i );
                str_append( &vm->msg, string->value );
                break;
@@ -610,36 +636,32 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
             ++index;
             list_next( &i );
          }
-         --turn->stack;
       }
       break;
    case PCD_PRINTNUMBER:
       {
          char text[ 11 ];
-         sprintf( text, "%d", turn->stack[ -1 ] );
+         sprintf( text, "%d", pop( turn ) );
          str_append( &vm->msg, text );
-         --turn->stack;
       }
       break;
    case PCD_PRINTCHARACTER:
       {
-         char text[] = { ( char ) turn->stack[ -1 ], '\0' };
+         char text[] = { ( char ) pop( turn ), '\0' };
          str_append( &vm->msg, text );
-         --turn->stack;
       }
       break;
    case PCD_PUSHBYTE:
-      *turn->stack = *turn->ip;
-      ++turn->stack;
+      push( turn, *turn->ip );
       ++turn->ip;
       break;
    case PCD_PUSHMAPARRAY: {
-      int index = turn->stack[ -1 ];
+      int index = pop( turn );
       if ( index >= 0 && index < vm->arrays[ ( int ) *turn->ip ].size ) {
-         turn->stack[ -1 ] = vm->arrays[ ( int ) *turn->ip ].elements[ turn->stack[ -1 ] ];
+         push( turn, vm->arrays[ ( int ) *turn->ip ].elements[ pop( turn ) ] );
       }
       else {
-         turn->stack[ -1 ] = 0;
+         push( turn, 0 );
       }
       ++turn->ip;
       break;
@@ -793,6 +815,16 @@ static void decode_opcode( struct vm* vm, struct turn* turn ) {
    else {
    }
    turn->opcode = opc;
+}
+
+static void push( struct turn* turn, i32 value ) {
+   *turn->stack = value;
+   ++turn->stack;
+}
+
+static i32 pop( struct turn* turn ) {
+   --turn->stack;
+   return *turn->stack;
 }
 
 void add_waiting_script( struct script* script,
