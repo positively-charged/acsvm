@@ -655,6 +655,15 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
       push( turn, *turn->ip );
       ++turn->ip;
       break;
+   case PCD_PUSH2BYTES:
+      // TODO: Make sure we do not overflow the IP segment. Make a function
+      // that reads the IP and protects against overflows.
+      push( turn, turn->ip[ 0 ] );
+      push( turn, turn->ip[ 1 ] );
+      turn->ip +=
+         sizeof( turn->ip[ 0 ] ) +
+         sizeof( turn->ip[ 1 ] );
+      break;
    case PCD_PUSHMAPARRAY: {
       int index = pop( turn );
       if ( index >= 0 && index < vm->arrays[ ( int ) *turn->ip ].size ) {
