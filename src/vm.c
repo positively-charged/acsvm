@@ -35,7 +35,12 @@ static struct script* remove_suspended_script( struct vm* vm,
    i32 script_number );
 static void init_turn( struct turn* turn, struct script* script );
 static void run_script( struct vm* vm, struct turn* turn );
+static bool script_finished( struct turn* turn );
 static void run_instruction( struct vm* vm, struct turn* turn );
+static void run_assignworldarray( struct vm* vm, struct turn* turn );
+static struct vector* get_world_vector( struct vm* vm, i32 index );
+static void extend_array_if_out_of_bounds( struct vector* vector, i32 index );
+static void run_pushworldarray( struct vm* vm, struct turn* turn );
 static void decode_opcode( struct vm* vm, struct turn* turn );
 static void push( struct turn* turn, i32 value );
 static i32 pop( struct turn* turn );
@@ -79,6 +84,9 @@ void init_vm( struct vm* vm ) {
    str_init( &vm->msg );
    memset( vm->vars, 0, sizeof( vm->vars ) );
    srand( time( NULL ) );
+   for ( isize i = 0; i < ARRAY_SIZE( vm->world_arrays ); ++i ) {
+      vector_init( &vm->world_arrays[ i ], sizeof( i32 ) );
+   }
 }
 
 void run( struct vm* vm  ) {
@@ -224,8 +232,19 @@ static void run_script( struct vm* vm, struct turn* turn ) {
    turn->ip = vm->object->data + turn->script->offset;
    turn->stack = stack;
    turn->script->state = SCRIPTSTATE_RUNNING;
-   while ( ! turn->finished ) {
+   while ( ! script_finished( turn ) ) {
       run_instruction( vm, turn );
+   }
+}
+
+static bool script_finished( struct turn* turn ) {
+   switch ( turn->script->state ) {
+   case SCRIPTSTATE_SUSPENDED:
+   case SCRIPTSTATE_TERMINATED:
+   case SCRIPTSTATE_DELAYED:
+      return true;
+   default:
+      return false;
    }
 }
 
@@ -675,6 +694,12 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
       ++turn->ip;
       break;
    }
+   case PCD_PUSHWORLDARRAY:
+      run_pushworldarray( vm, turn );
+      break;
+   case PCD_ASSIGNWORLDARRAY:
+      run_assignworldarray( vm, turn );
+      break;
    case PCD_LSPEC1DIRECTB:
       execute_line_special( vm,
          turn->ip[ 0 ],
@@ -806,6 +831,120 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
          "unknown instruction (opcode is %d)", turn->opcode );
       v_bail( vm );
    }
+}
+
+/**
+ * Implements the PCD_ASSIGNWORLDARRAY instruction.
+ */
+static void run_assignworldarray( struct vm* vm, struct turn* turn ) {
+   // Get off the stack the element index and the value to store in the
+   // element. The value is at the top of the stack, followed by the element
+   // index.
+   i32 value = pop( turn );
+   i32 index = pop( turn );
+   i32 array_index = turn->ip[ 0 ];
+   struct vector* vector = get_world_vector( vm, array_index );
+   if ( vector ) {
+      extend_array_if_out_of_bounds( vector, index );
+      // Access the element and store the value in the element.
+      struct vector_result result = vector_get( vector, index );
+      switch ( result.err ) {
+      case VECTORGETERR_NONE:
+         memcpy( result.element, &value, sizeof( value ) );
+         break;
+      default:
+         UNREACHABLE();
+      }
+   }
+   else {
+      v_diag( vm, DIAG_ERR,
+         "script %d attempted to assign to a non-existant array "
+         "(index of array is %d)", turn->script->number, array_index );
+      turn->script->state = SCRIPTSTATE_TERMINATED;
+   }
+   ++turn->ip;
+}
+
+/**
+ * Retrieves a world array, represented by a vector. If a world array with the
+ * specified index does not exist, NULL is returned.
+ */
+static struct vector* get_world_vector( struct vm* vm, i32 index ) {
+   if ( index >= 0 && index < ARRAY_SIZE( vm->world_arrays ) ) {
+      return &vm->world_arrays[ index ];
+   }
+   else {
+      return NULL;
+   }
+}
+
+/**
+ * Extends the vector if index is outside its range.
+ */
+static void extend_array_if_out_of_bounds( struct vector* vector, i32 index ) {
+   const i32 required_capacity = index + 1;
+   if ( vector->capacity < required_capacity ) {
+      const i32 old_capacity = vector->capacity;
+      // In user code, for sequentially increasing indexes, like in a for loop,
+      // having to extend the array every time a larger index is used is
+      // wasteful. To reduce allocations, extra elements are allocated after
+      // the index.
+      enum { EXTRA_ELEMENTS = 1000 };
+      const i32 new_capacity = required_capacity + EXTRA_ELEMENTS;
+      switch ( vector_grow( vector, new_capacity ) ) {
+      case VECTORGROWERR_NONE:
+         // Initialize any new space with zeroes.
+         for ( isize i = 0; i < new_capacity - old_capacity; ++i ) {
+            struct vector_result result = vector_get( vector,
+               old_capacity + i );
+            switch ( result.err ) {
+            case VECTORGETERR_NONE:
+               {
+                  const i32 zero = 0;
+                  memcpy( result.element, &zero, sizeof( zero ) );
+               }
+               break;
+            default:
+               UNREACHABLE();
+            }
+         }
+         break;
+      default:
+         break;
+      }
+   }
+}
+
+/**
+ * Implements the PCD_PUSHWORLDARRAY instruction.
+ */
+static void run_pushworldarray( struct vm* vm, struct turn* turn ) {
+   // PCD_PUSHWORLDARRAY instruction takes one argument off the stack. This
+   // argument is an index of the element to retrieve from the array.
+   i32 index = pop( turn );
+   i32 array_index = turn->ip[ 0 ];
+   struct vector* vector = get_world_vector( vm, array_index );
+   if ( vector ) {
+      struct vector_result result = vector_get( vector, index );
+      if ( result.err == VECTORGETERR_NONE ) {
+         i32 value;
+         memcpy( &value, result.element, sizeof( value ) );
+         push( turn, value );
+      }
+      else {
+         // On an out-of-bounds condition, return a 0 just like the ZDoom
+         // virtual machine.
+         push( turn, 0 );
+      }
+   }
+   else {
+      v_diag( vm, DIAG_ERR,
+         "script %d attempted to pop non-existant array "
+         "(index of array is %d)", turn->script->number, array_index );
+      turn->script->state = SCRIPTSTATE_TERMINATED;
+   }
+   // Move past the array index argument.
+   ++turn->ip;
 }
 
 static void decode_opcode( struct vm* vm, struct turn* turn ) {

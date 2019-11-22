@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+#include "common/vector.h"
+
 enum { MAX_MAP_VARS = 128 };
 enum { MAX_WORLD_VARS = 256 };
 enum { MAX_GLOBAL_VARS = 64 };
@@ -92,6 +94,7 @@ struct vm {
    i32 vars[ MAX_MAP_VARS ];
    i32 world_vars[ MAX_WORLD_VARS ];
    i32 global_vars[ MAX_GLOBAL_VARS ];
+   struct vector world_arrays[ MAX_WORLD_VARS ];
 };
 
 #define DIAG_NONE 0x0
