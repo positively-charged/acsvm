@@ -37,7 +37,7 @@ static void init_turn( struct turn* turn, struct script* script );
 static void run_script( struct vm* vm, struct turn* turn );
 static bool script_finished( struct turn* turn );
 static void run_instruction( struct vm* vm, struct turn* turn );
-static void run_assignworldarray( struct vm* vm, struct turn* turn );
+static void run_updateworldarray( struct vm* vm, struct turn* turn );
 static struct vector* get_world_vector( struct vm* vm, i32 index );
 static void extend_array_if_out_of_bounds( struct vector* vector, i32 index );
 static void run_pushworldarray( struct vm* vm, struct turn* turn );
@@ -698,7 +698,17 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
       run_pushworldarray( vm, turn );
       break;
    case PCD_ASSIGNWORLDARRAY:
-      run_assignworldarray( vm, turn );
+   case PCD_ADDWORLDARRAY:
+   case PCD_SUBWORLDARRAY:
+   case PCD_MULWORLDARRAY:
+   case PCD_DIVWORLDARRAY:
+   case PCD_MODWORLDARRAY:
+   case PCD_ANDWORLDARRAY:
+   case PCD_EORWORLDARRAY:
+   case PCD_ORWORLDARRAY:
+   case PCD_LSWORLDARRAY:
+   case PCD_RSWORLDARRAY:
+      run_updateworldarray( vm, turn );
       break;
    case PCD_LSPEC1DIRECTB:
       execute_line_special( vm,
@@ -834,9 +844,12 @@ static void run_instruction( struct vm* vm, struct turn* turn ) {
 }
 
 /**
- * Implements the PCD_ASSIGNWORLDARRAY instruction.
+ * Implements the following instructions:
+ * - PCD_ASSIGNWORLDARRAY
+ * - PCD_ADDWORLDARRAY
+ * - PCD_SUBWORLDARRAY
  */
-static void run_assignworldarray( struct vm* vm, struct turn* turn ) {
+static void run_updateworldarray( struct vm* vm, struct turn* turn ) {
    // Get off the stack the element index and the value to store in the
    // element. The value is at the top of the stack, followed by the element
    // index.
@@ -850,7 +863,37 @@ static void run_assignworldarray( struct vm* vm, struct turn* turn ) {
       struct vector_result result = vector_get( vector, index );
       switch ( result.err ) {
       case VECTORGETERR_NONE:
-         memcpy( result.element, &value, sizeof( value ) );
+         {
+            i32* element = result.element;
+            // Prevent division by zero.
+            switch ( turn->opcode ) {
+            case PCD_DIVWORLDARRAY:
+            case PCD_MODWORLDARRAY:
+               if ( value == 0 ) {
+                  v_diag( vm, DIAG_ERR,
+                     "division by zero in script %d", turn->script->number );
+                  v_bail( vm );
+               }
+               break;
+            default:
+               break;
+            }
+            switch ( turn->opcode ) {
+            case PCD_ASSIGNWORLDARRAY: *element = value; break;
+            case PCD_ADDWORLDARRAY: *element += value; break;
+            case PCD_SUBWORLDARRAY: *element -= value; break;
+            case PCD_MULWORLDARRAY: *element *= value; break;
+            case PCD_DIVWORLDARRAY: *element /= value; break;
+            case PCD_MODWORLDARRAY: *element %= value; break;
+            case PCD_ANDWORLDARRAY: *element &= value; break;
+            case PCD_EORWORLDARRAY: *element ^= value; break;
+            case PCD_ORWORLDARRAY:  *element |= value; break;
+            case PCD_LSWORLDARRAY:  *element <<= value; break;
+            case PCD_RSWORLDARRAY:  *element >>= value; break;
+            default:
+               UNREACHABLE();
+            }
+         }
          break;
       default:
          UNREACHABLE();
