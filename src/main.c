@@ -8,9 +8,10 @@
 #include "common/str.h"
 #include "common/list.h"
 #include "vm.h"
+#include "debug.h"
 
 static void init_options( struct options* options );
-static void read_options( struct options* options, char* argv[] );
+static bool read_options( struct options* options, char* argv[] );
 static void print_usage( char* path );
 
 i32 main( i32 argc, char* argv[] ) {
@@ -18,7 +19,9 @@ i32 main( i32 argc, char* argv[] ) {
    i32 result = EXIT_FAILURE;
    struct options options;
    init_options( &options );
-   read_options( &options, argv );
+   if ( ! read_options( &options, argv ) ) {
+      goto deinit_memory;
+   }
    if ( ! options.object_file ) {
       print_usage( argv[ 0 ] );
       goto deinit_memory;
@@ -55,11 +58,32 @@ static void init_options( struct options* options ) {
    list_init( &options->libraries );
 }
 
-static void read_options( struct options* options, char* argv[] ) {
+static bool read_options( struct options* options, char* argv[] ) {
    char** args = argv + 1;
+
+   // Read options.
+   while ( *args && args[ 0 ][ 0 ] == '-' ) {
+      switch ( args[ 0 ][ 1 ] ) {
+      case 'l':
+         ++args;
+         if ( *args == NULL ) {
+            printf( "fatal error: "
+               "missing library path argument for -l option" );
+            return false;
+         }
+         list_append( &options->libraries, *args );
+         ++args;
+         break;
+      default:
+         return false;
+      }
+   }
+
+   // Read object file.
    if ( *args ) {
       options->object_file = *args;
    }
+   return true;
 }
 
 static void print_usage( char* path ) {
