@@ -20,9 +20,6 @@ i32 main( i32 argc, char* argv[] ) {
    struct options options;
    init_options( &options );
    if ( ! read_options( &options, argv ) ) {
-      goto deinit_memory;
-   }
-   if ( ! options.object_file ) {
       print_usage( argv[ 0 ] );
       goto deinit_memory;
    }
@@ -83,12 +80,18 @@ static bool read_options( struct options* options, char* argv[] ) {
    if ( *args ) {
       options->object_file = *args;
    }
+   else {
+      printf( "fatal error: missing object file argument\n" );
+      return false;
+   }
    return true;
 }
 
 static void print_usage( char* path ) {
    printf(
-      "Usage: %s [options] [object-file]\n"
+      "Usage: %s [options] <object-file>\n"
+      "Parameters:\n"
+      "  <object-file>: path to file to run.\n"
       "Options:\n"
       "  -l <path>     Load a library\n"
       "",
