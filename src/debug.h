@@ -6,5 +6,6 @@
  */
 
 void dgb_show_waiting_scripts( struct vm* vm );
+void dbg_show_options( struct options* options );
 
 #endif
