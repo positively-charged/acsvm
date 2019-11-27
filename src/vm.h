@@ -103,7 +103,7 @@ struct vm {
 #define DIAG_ERR 0x2
 #define DIAG_FATALERR 0x4
 
-void vm_run( const u8* data, size_t size );
+void vm_run( struct options* options );
 void vm_init_file_request( struct file_request* request );
 void vm_load_file( struct file_request* request, const char* path );
 void vm_init_object( struct object* object, const u8* data, int size );

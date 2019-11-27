@@ -51,11 +51,15 @@ static void execute_line_special( struct vm* vm, i32 special, i32 arg1,
 static void execute_acs_execute( struct vm* vm, i32 script_number, i32 map,
    i32 arg1 );
 
-void vm_run( const u8* data, size_t size ) {
+void vm_run( struct options* options ) {
+   struct file_request request;
+   vm_init_file_request( &request );
+   vm_load_file( &request, options->object_file );
+
    struct vm vm;
    init_vm( &vm );
    struct object object;
-   vm_init_object( &object, data, size );
+   vm_init_object( &object, request.data, request.size );
    vm.object = &object;
    switch ( object.format ) {
    case FORMAT_ZERO:
@@ -72,6 +76,8 @@ void vm_run( const u8* data, size_t size ) {
       vm.bail = &bail;
       run( &vm );
    }
+
+   free( request.data );
 }
 
 void init_vm( struct vm* vm ) {

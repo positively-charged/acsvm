@@ -24,9 +24,6 @@ i32 main( i32 argc, char* argv[] ) {
       goto deinit_memory;
    }
 
-   struct file_request request;
-   vm_init_file_request( &request );
-   vm_load_file( &request, options.object_file );
 #if 0
    
    FILE* fh = fopen( options.object_file, "rb" );
@@ -41,9 +38,7 @@ i32 main( i32 argc, char* argv[] ) {
    fread( data, sizeof( char ), size, fh );
    fclose( fh );
 #endif
-   vm_run( request.data, request.size );
-   deinit_data:
-   free( request.data );
+   vm_run( &options );
    deinit_memory:
    mem_free_all();
    finish:
