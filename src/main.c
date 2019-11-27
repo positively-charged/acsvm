@@ -88,7 +88,9 @@ static bool read_options( struct options* options, char* argv[] ) {
 
 static void print_usage( char* path ) {
    printf(
-      "Usage: %s [object-file]\n"
+      "Usage: %s [options] [object-file]\n"
+      "Options:\n"
+      "  -l <path>     Load a library\n"
       "",
       path );
 }
