@@ -11,6 +11,7 @@ enum { MAX_GLOBAL_VARS = 64 };
 
 struct options {
    const char* object_file;
+   struct list libraries; // Contains paths to library files.
 };
 
 struct file_request {

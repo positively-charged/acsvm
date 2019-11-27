@@ -52,6 +52,7 @@ i32 main( i32 argc, char* argv[] ) {
 
 static void init_options( struct options* options ) {
    options->object_file = NULL;
+   list_init( &options->libraries );
 }
 
 static void read_options( struct options* options, char* argv[] ) {
