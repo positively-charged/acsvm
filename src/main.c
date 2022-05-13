@@ -12,6 +12,7 @@
 
 static void init_options( struct options* options );
 static bool read_options( struct options* options, char* argv[] );
+static char** read_named_module_arg( struct options* options, char** args );
 static void print_usage( char* path );
 
 i32 main( i32 argc, char* argv[] ) {
@@ -39,6 +40,7 @@ i32 main( i32 argc, char* argv[] ) {
    fclose( fh );
 #endif
    vm_run( &options );
+   result = EXIT_SUCCESS;
    deinit_memory:
    mem_free_all();
    finish:
@@ -48,6 +50,8 @@ i32 main( i32 argc, char* argv[] ) {
 static void init_options( struct options* options ) {
    options->object_file = NULL;
    list_init( &options->libraries );
+   list_init( &options->modules );
+   options->verbose = false;
 }
 
 static bool read_options( struct options* options, char* argv[] ) {
@@ -56,15 +60,13 @@ static bool read_options( struct options* options, char* argv[] ) {
    // Read options.
    while ( *args && args[ 0 ][ 0 ] == '-' ) {
       switch ( args[ 0 ][ 1 ] ) {
-      case 'l':
+      case 'n':
          ++args;
-         if ( *args == NULL ) {
-            printf( "fatal error: "
-               "missing library path argument for -l option" );
-            return false;
-         }
-         list_append( &options->libraries, *args );
+         args = read_named_module_arg( options, args );
+         break;
+      case 'v':
          ++args;
+         options->verbose = true;
          break;
       default:
          return false;
@@ -73,6 +75,10 @@ static bool read_options( struct options* options, char* argv[] ) {
 
    // Read object file.
    if ( *args ) {
+      struct module_arg* arg = mem_alloc( sizeof( *arg ) );
+      arg->name = "";
+      arg->path = *args;
+      list_append( &options->modules, arg );
       options->object_file = *args;
    }
    else {
@@ -82,13 +88,35 @@ static bool read_options( struct options* options, char* argv[] ) {
    return true;
 }
 
+static char** read_named_module_arg( struct options* options, char** args ) {
+   struct module_arg* arg = mem_alloc( sizeof( *arg ) );
+   if ( *args == NULL ) {
+      printf( "fatal error: "
+         "missing module name argument for -n option" );
+      return false;
+   }
+   arg->name = *args;
+   ++args;
+   if ( *args == NULL ) {
+      printf( "fatal error: "
+         "missing module path argument for -n option" );
+      return false;
+   }
+   arg->path = *args;
+   list_append( &options->modules, arg );
+   ++args;
+   return args;
+}
+
+
 static void print_usage( char* path ) {
    printf(
       "Usage: %s [options] <object-file>\n"
       "Parameters:\n"
       "  <object-file>: path to file to run.\n"
       "Options:\n"
-      "  -l <path>     Load a library\n"
+      "  -n <name> <path>     Load a module\n"
+      "  -v                   Verbose output\n"
       "",
       path );
 }

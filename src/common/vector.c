@@ -1,6 +1,10 @@
+#include <string.h>
+
 #include "misc.h"
 #include "mem.h"
 #include "vector.h"
+
+static u8* calc_element( struct vector* vector, isize index );
 
 /**
  * Initializes a vector. A vector should then be grown to the appropriate size
@@ -9,6 +13,7 @@
 void vector_init( struct vector* vector, isize element_size ) {
    vector->elements = NULL;
    vector->element_size = element_size;
+   vector->size = 0;
    vector->capacity = 0;
 }
 
@@ -46,7 +51,7 @@ enum vector_grow_err vector_double( struct vector* vector ) {
  * Retrieves a pointer to the element at the specified index.
  */
 struct vector_result vector_get( struct vector* vector, isize index ) {
-   if ( index >= 0 && index < vector->capacity ) {
+   if ( index >= 0 && index < vector->size ) {
       void* element = ( u8* ) vector->elements +
          ( index * vector->element_size );
       return ( struct vector_result ) {
@@ -59,6 +64,19 @@ struct vector_result vector_get( struct vector* vector, isize index ) {
          .err = VECTORGETERR_OUTOFBOUNDS,
       };
    }
+}
+
+static u8* calc_element( struct vector* vector, isize index ) {
+   return ( u8* ) vector->elements + ( index * vector->element_size );
+}
+
+void* vector_append( struct vector* vector ) {
+   if ( vector->size == vector->capacity ) {
+      vector_double( vector );
+   }
+   void* element = calc_element( vector, vector->size );
+   ++vector->size;
+   return element;
 }
 
 /**

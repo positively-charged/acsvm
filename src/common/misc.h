@@ -38,4 +38,6 @@ typedef unsigned long long u64;
 typedef size_t usize;
 typedef ssize_t isize;
 
+#define null NULL
+
 #endif
