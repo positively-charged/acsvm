@@ -234,6 +234,11 @@ struct vm {
 #define DIAG_MULTI_PART 0x10
 #define DIAG_INTERNAL 0x20
 
+#define UNIMPLEMENTED \
+   v_diag( vm, DIAG_FATALERR, \
+      "instruction opcode %d not implemented", turn->opcode ); \
+   v_bail( vm );
+
 void vm_run( struct options* options );
 void vm_load_modules( struct vm* vm );
 void vm_init_file_request( struct file_request* request );
@@ -251,5 +256,8 @@ isize vm_get_stack_size( struct turn* turn );
 i32* vm_get_map_var( struct vm* vm, struct module* module, i32 index );
 struct script* vm_find_script_by_number( struct vm* vm, i32 number );
 const char* vm_present_script( struct vm* vm, struct script* script );
+void vm_run_lspec( struct vm* vm, struct turn* turn );
+void vm_push( struct turn* turn, i32 value );
+i32 vm_pop( struct vm* vm, struct turn* turn );
 
 #endif

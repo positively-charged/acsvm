@@ -10,11 +10,6 @@
 #include "pcode.h"
 #include "debug.h"
 
-#define UNIMPLEMENTED \
-   v_diag( vm, DIAG_FATALERR, \
-      "instruction opcode %d not implemented", turn->opcode ); \
-   v_bail( vm );
-
 struct pcode_func {
    const char* name;
    i32 opcode;
@@ -28,14 +23,6 @@ enum arg {
    ARG_I32,
 };
 
-static void run_lspec( struct vm* vm, struct turn* turn );
-static i32 read_lspec_id( struct turn* turn );
-static bool execute_line_special( struct vm* vm, i32 special,
-   bool push_return_value, i32 arg1, i32 arg2, i32 arg3, i32 arg4, i32 arg5 );
-static void execute_acs_execute( struct vm* vm, i32 script_number, i32 map,
-   i32 arg1 );
-static void show_line_special( struct vm* vm, i32 id, i32* args,
-   i32 total_args );
 static void check_div_by_zero( struct vm* vm, struct turn* turn,
    i32 denominator );
 static i32* get_script_var( struct vm* vm, struct turn* turn, i32 index );
@@ -106,7 +93,7 @@ void vm_run_instruction( struct vm* vm, struct turn* turn ) {
    case PCD_LSPEC5DIRECT:
    case PCD_LSPEC5EX:
 	case PCD_LSPEC5EXRESULT:
-      run_lspec( vm, turn );
+      vm_run_lspec( vm, turn );
       break;
    case PCD_ADD:
       {
@@ -768,7 +755,7 @@ void vm_run_instruction( struct vm* vm, struct turn* turn ) {
    case PCD_LSPEC3DIRECTB:
    case PCD_LSPEC4DIRECTB:
    case PCD_LSPEC5DIRECTB:
-      run_lspec( vm, turn );
+      vm_run_lspec( vm, turn );
       break;
    case PCD_DELAYDIRECTB:
       {
@@ -1041,7 +1028,7 @@ void vm_run_instruction( struct vm* vm, struct turn* turn ) {
       run_pcode_func( vm, turn );
       break;
    case PCD_LSPEC5RESULT:
-      run_lspec( vm, turn );
+      vm_run_lspec( vm, turn );
       break;
    case PCD_GETSIGILPIECES:
    case PCD_GETLEVELINFO:
@@ -1233,165 +1220,6 @@ void vm_run_instruction( struct vm* vm, struct turn* turn ) {
    }
 }
 
-static void run_lspec( struct vm* vm, struct turn* turn ) {
-   i32 id = read_lspec_id( turn );
-
-   bool direct_opcode = false;
-   bool byte_args = false;
-   switch ( turn->opcode ) {
-   case PCD_LSPEC1DIRECT:
-   case PCD_LSPEC2DIRECT:
-   case PCD_LSPEC3DIRECT:
-   case PCD_LSPEC4DIRECT:
-   case PCD_LSPEC5DIRECT:
-      direct_opcode = true;
-      break;
-   case PCD_LSPEC1DIRECTB:
-   case PCD_LSPEC2DIRECTB:
-   case PCD_LSPEC3DIRECTB:
-   case PCD_LSPEC4DIRECTB:
-   case PCD_LSPEC5DIRECTB:
-      direct_opcode = true;
-      byte_args = true;
-      break;
-   default:
-      break;
-   }
-
-   i32 total_args = 1;
-   switch ( turn->opcode ) {
-   case PCD_LSPEC1:
-   case PCD_LSPEC1DIRECT:
-   case PCD_LSPEC1DIRECTB:
-      break;
-   case PCD_LSPEC2:
-   case PCD_LSPEC2DIRECT:
-   case PCD_LSPEC2DIRECTB:
-      total_args = 2;
-      break;
-   case PCD_LSPEC3:
-   case PCD_LSPEC3DIRECT:
-   case PCD_LSPEC3DIRECTB:
-      total_args = 3;
-      break;
-   case PCD_LSPEC4:
-   case PCD_LSPEC4DIRECT:
-   case PCD_LSPEC4DIRECTB:
-      total_args = 4;
-      break;
-   case PCD_LSPEC5:
-   case PCD_LSPEC5DIRECT:
-   case PCD_LSPEC5DIRECTB:
-   case PCD_LSPEC5RESULT:
-   case PCD_LSPEC5EX:
-   case PCD_LSPEC5EXRESULT:
-      total_args = 5;
-      break;
-   default:
-      UNIMPLEMENTED;
-   }
-
-   bool push_return_value = false;
-   switch ( turn->opcode ) {
-   case PCD_LSPEC5RESULT:
-   case PCD_LSPEC5EXRESULT:
-      push_return_value = true;
-      break;
-   default:
-      break;
-   }
-
-   i32 args[ 5 ];
-   for ( i32 i = 0; i < ARRAY_SIZE( args ); ++i ) {
-      if ( i < total_args ) {
-         if ( direct_opcode ) {
-            if ( byte_args ) {
-               args[ i ] = turn->ip[ 0 ];
-               ++turn->ip;
-            }
-            else {
-               memcpy( &args[ i ], turn->ip, sizeof( args[ i ] ) );
-               turn->ip += sizeof( args[ i ] );
-            }
-         }
-         else {
-            args[ total_args - i - 1 ] = pop( vm, turn );
-         }
-      }
-      else {
-         args[ i ] = 0;
-      }
-   }
-
-   bool executed = execute_line_special( vm, id, push_return_value, args[ 0 ],
-      args[ 1 ], args[ 2 ], args[ 3 ], args[ 4 ] );
-   if ( ! executed ) {
-      show_line_special( vm, id, args, total_args );
-      if ( push_return_value ) {
-         push( turn, 0 );
-      }
-   }
-}
-
-static i32 read_lspec_id( struct turn* turn ) {
-   bool small_code = turn->module->object.small_code;
-   switch ( turn->opcode ) {
-   case PCD_LSPEC5EX:
-   case PCD_LSPEC5EXRESULT:
-      small_code = false;
-      break;
-   default:
-      break;
-   }
-   if ( small_code ) {
-      //expect_pcode_data( viewer, segment, sizeof( *segment->data ) );
-      i32 id = turn->ip[ 0 ];
-      ++turn->ip;
-      return id;
-   }
-   else {
-      //expect_pcode_data( viewer, segment, sizeof( id ) );
-      i32 id = 0;
-      memcpy( &id, turn->ip, sizeof( id ) );
-      turn->ip += sizeof( id );
-      return id;
-   }
-}
-
-static bool execute_line_special( struct vm* vm, i32 special,
-   bool push_return_value, i32 arg1, i32 arg2, i32 arg3, i32 arg4, i32 arg5 ) {
-   switch ( special ) {
-   case LSPEC_ACSEXECUTE:
-      execute_acs_execute( vm, arg1, arg2, arg3 );
-      break;
-   default:
-      return false;
-   }
-   return true;
-}
-
-static void execute_acs_execute( struct vm* vm, i32 script_number, i32 map,
-   i32 arg1 ) {
-   // Resume a suspended script.
-   struct script* script = vm_remove_suspended_script( vm, script_number );
-   if ( script != NULL ) {
-//      enq_script( vm, script );
-      return;
-   }
-}
-
-static void show_line_special( struct vm* vm, i32 id, i32* args,
-   i32 total_args ) {
-   v_diag( vm, DIAG_DBG | DIAG_WARN | DIAG_MULTI_PART,
-      "ignoring LineSpecial:%d( ", id );
-   for ( i32 i = 0; i < total_args; ++i ) {
-      v_diag_more( vm, "%d", args[ i ] );
-      if ( i + 1 < total_args ) {
-         v_diag_more( vm, ", " );
-      }
-   }
-   v_diag_more( vm, " )\n" ); 
-}
 
 static void check_div_by_zero( struct vm* vm, struct turn* turn,
    i32 denominator ) {
@@ -1599,9 +1427,17 @@ static void decode_opcode( struct vm* vm, struct turn* turn ) {
    turn->opcode = opc;
 }
 
+void vm_push( struct turn* turn, i32 value ) {
+   push( turn, value );
+}
+
 static void push( struct turn* turn, i32 value ) {
    *turn->stack = value;
    ++turn->stack;
+}
+
+i32 vm_pop( struct vm* vm, struct turn* turn ) {
+   return pop( vm, turn );
 }
 
 static i32 pop( struct vm* vm, struct turn* turn ) {
