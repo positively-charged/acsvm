@@ -259,5 +259,6 @@ const char* vm_present_script( struct vm* vm, struct script* script );
 void vm_run_lspec( struct vm* vm, struct turn* turn );
 void vm_push( struct turn* turn, i32 value );
 i32 vm_pop( struct vm* vm, struct turn* turn );
+void vm_run_callfunc( struct vm* vm, struct turn* turn );
 
 #endif

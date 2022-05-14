@@ -17,12 +17,6 @@ struct pcode_func {
    bool returns_value;
 };
 
-enum arg {
-   ARG_U8,
-   ARG_I16,
-   ARG_I32,
-};
-
 static void check_div_by_zero( struct vm* vm, struct turn* turn,
    i32 denominator );
 static i32* get_script_var( struct vm* vm, struct turn* turn, i32 index );
@@ -49,11 +43,6 @@ static struct call* pop_call( struct vm* vm );
 static void run_pcode_func( struct vm* vm, struct turn* turn );
 static enum opcode translate_direct_opcode( enum opcode opcode );
 static const struct pcode_func* get_pcode_func( enum opcode opcode );
-static void run_callfunc( struct vm* vm, struct turn* turn );
-static void call_dump_script( struct vm* vm, struct turn* turn, i32 script );
-static void show_ext_func( struct vm* vm, struct turn* turn, i32 id, i32* args,
-   i32 total_args );
-static i32 read_arg( struct vm* vm, struct turn* turn, enum arg arg );
 
 /**
  * Executes a single instruction of a script.
@@ -1074,7 +1063,7 @@ void vm_run_instruction( struct vm* vm, struct turn* turn ) {
       run_pcode_func( vm, turn );
       break;
    case PCD_CALLFUNC:
-      run_callfunc( vm, turn );
+      vm_run_callfunc( vm, turn );
       break;
    case PCD_ASSIGNSCRIPTARRAY:
       {
@@ -1758,94 +1747,4 @@ static const struct pcode_func* get_pcode_func( enum opcode opcode ) {
  */
 isize vm_get_stack_size( struct turn* turn ) {
    return turn->stack - turn->stack_start;
-}
-
-enum ext_func {
-   EXTFUNC_DUMPSCRIPT = 20000,
-   EXTFUNC_DUMPLOCALVARS = 20001,
-};
-
-static void run_callfunc( struct vm* vm, struct turn* turn ) {
-   i32 num_args = read_arg( vm, turn, ARG_U8 );
-   i32 func = read_arg( vm, turn, ARG_I16 );
-   switch ( func ) {
-   case EXTFUNC_DUMPSCRIPT:
-      call_dump_script( vm, turn,
-         pop( vm, turn )
-      );
-      break;
-   case EXTFUNC_DUMPLOCALVARS:
-      dbg_dump_local_vars( vm, turn );
-      push( turn, 1 );
-      break;
-   default:
-      show_ext_func( vm, turn, func, turn->stack - num_args, num_args );
-      turn->stack -= num_args;
-      push( turn, 0 );
-   }
-}
-
-static void call_dump_script( struct vm* vm, struct turn* turn, i32 number ) {
-   struct script* script = vm_find_script_by_number( vm, number );
-   if ( script != null ) {
-      dbg_dump_script( vm, script );
-      push( turn, 1 );
-   }
-   else {
-      v_diag( vm, DIAG_DBG,
-         "script %d not found", number );
-      push( turn, 0 );
-   }
-}
-
-static void show_ext_func( struct vm* vm, struct turn* turn, i32 id, i32* args,
-   i32 total_args ) {
-   v_diag( vm, DIAG_DBG | DIAG_WARN | DIAG_MULTI_PART,
-      "ignoring -%d:ExtensionFunction(", id );
-   if ( total_args > 0 ) {
-      v_diag_more( vm, " " ); 
-      for ( i32 i = 0; i < total_args; ++i ) {
-         v_diag_more( vm, "%d", args[ i ] );
-         if ( i + 1 < total_args ) {
-            v_diag_more( vm, ", " );
-         }
-      }
-      v_diag_more( vm, " " ); 
-   }
-   v_diag_more( vm, ")\n" ); 
-}
-
-static i32 read_arg( struct vm* vm, struct turn* turn, enum arg arg ) {
-   if ( ! turn->module->object.small_code ) {
-      arg = ARG_I32;
-   }
-   switch ( arg ) {
-   case ARG_U8:
-      {
-         u8 arg = turn->ip[ 0 ];
-         ++turn->ip;
-         return arg;
-      }
-      break;
-   case ARG_I16:
-      {
-         i16 arg;
-         memcpy( &arg, turn->ip, sizeof( arg ) );
-         turn->ip += sizeof( arg );
-         return arg;
-      }
-      break;
-   case ARG_I32:
-      {
-         i32 arg;
-         memcpy( &arg, turn->ip, sizeof( arg ) );
-         turn->ip += sizeof( arg );
-         return arg;
-      }
-      break;
-   default:
-      UNIMPLEMENTED;
-      v_bail( vm );
-      return 0;
-   }
 }
